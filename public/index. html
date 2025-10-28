@@ -1,1 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ClientPulse — Reminders & Follow-ups</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">CP</div>
+        <div class="title">ClientPulse</div>
+      </div>
+      <div class="controls">
+        <button id="darkToggle" class="btn small">🌙</button>
+        <button id="exportBtn" class="btn">Export JSON</button>
+      </div>
+    </header>
 
+    <main class="grid">
+      <section class="card panel">
+        <h2>Add Client</h2>
+        <form id="clientForm" class="form">
+          <input name="name" placeholder="Full name" required />
+          <input name="email" placeholder="Email" required />
+          <input name="phone" placeholder="Phone (optional)" />
+          <textarea name="notes" placeholder="Notes (optional)"></textarea>
+          <div class="form-row">
+            <button type="submit" class="btn primary">Add Client</button>
+            <button type="button" id="refreshClients" class="btn">Refresh</button>
+          </div>
+        </form>
+        <div class="searchWrap">
+          <input id="clientSearch" placeholder="Search clients..." />
+        </div>
+        <ul id="clientsList" class="list"></ul>
+      </section>
+
+      <section class="card panel">
+        <h2>Schedule Reminder</h2>
+        <form id="reminderForm" class="form">
+          <select id="clientSelect" required>
+            <option value="">Select client...</option>
+          </select>
+          <input id="datetime" type="datetime-local" required />
+          <textarea id="message" placeholder="Message to send (short)"></textarea>
+          <select id="repeat">
+            <option value="none">No repeat</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+          </select>
+          <div class="form-row">
+            <button class="btn primary" type="submit">Schedule</button>
+            <button id="runNowSelected" type="button" class="btn">Run Now</button>
+          </div>
+        </form>
+
+        <h3>Upcoming Reminders</h3>
+        <ul id="remindersList" class="list"></ul>
+      </section>
+
+      <section class="card panel wide">
+        <div class="panelHeader">
+          <h2>Activity Log</h2>
+          <div><button id="clearLogBtn" class="btn small">Clear</button></div>
+        </div>
+        <div id="logs" class="logs"></div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div>Made with ❤️ · ClientPulse · Lightweight MVP</div>
+      <div class="version">v1.0</div>
+    </footer>
+  </div>
+
+  <script src="/script.js"></script>
+</body>
+</html>
