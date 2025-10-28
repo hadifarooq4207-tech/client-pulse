@@ -1,1 +1,211 @@
+/**
+ * ClientPulse — frontend script (vanilla JS)
+ * - Loads clients and reminders
+ * - Submits forms to server endpoints
+ * - Shows activity logs
+ * - Run now / schedule functionality
+ *
+ * Lightweight, no frameworks.
+ */
 
+const api = (path, opts = {}) => fetch(path, opts).then(r => r.json().catch(()=>null));
+
+/* DOM refs */
+const clientForm = document.getElementById('clientForm');
+const clientsList = document.getElementById('clientsList');
+const clientSelect = document.getElementById('clientSelect');
+const clientSearch = document.getElementById('clientSearch');
+const refreshClients = document.getElementById('refreshClients');
+
+const reminderForm = document.getElementById('reminderForm');
+const remindersList = document.getElementById('remindersList');
+const logsEl = document.getElementById('logs');
+const runNowSelected = document.getElementById('runNowSelected');
+const exportBtn = document.getElementById('exportBtn');
+const clearLogBtn = document.getElementById('clearLogBtn');
+const darkToggle = document.getElementById('darkToggle');
+
+/* state */
+let state = { clients: [], reminders: [], logs: [] };
+
+/* helpers */
+function el(tag, cls) { const e = document.createElement(tag); if (cls) e.className = cls; return e; }
+
+function formatDT(iso) {
+  if (!iso) return '-';
+  const d = new Date(iso);
+  return d.toLocaleString();
+}
+
+async function loadClients() {
+  const data = await api('/api/clients');
+  state.clients = Array.isArray(data) ? data : [];
+  renderClients();
+  populateClientSelect();
+}
+
+function renderClients(filter='') {
+  clientsList.innerHTML = '';
+  const arr = state.clients.filter(c => {
+    if (!filter) return true;
+    const s = filter.toLowerCase();
+    return (c.name || '').toLowerCase().includes(s) || (c.email||'').toLowerCase().includes(s);
+  });
+  if (arr.length === 0) {
+    clientsList.innerHTML = '<div class="meta">No clients yet.</div>';
+    return;
+  }
+  arr.forEach(c => {
+    const li = el('li', 'item');
+    const left = el('div');
+    left.innerHTML = `<div style="font-weight:700">${escapeHtml(c.name)}</div><div class="meta">${escapeHtml(c.email)} ${c.phone?(' • '+escapeHtml(c.phone)):''}</div>`;
+    const right = el('div');
+    right.style.display='flex'; right.style.gap='8px';
+    const addRemBtn = el('button','btn small'); addRemBtn.textContent='Use';
+    addRemBtn.onclick = () => {
+      clientSelect.value = c.id;
+      document.getElementById('datetime').focus();
+    };
+    right.appendChild(addRemBtn);
+    li.appendChild(left); li.appendChild(right);
+    clientsList.appendChild(li);
+  });
+}
+
+function populateClientSelect() {
+  clientSelect.innerHTML = '<option value="">Select client...</option>';
+  state.clients.forEach(c => {
+    const o = document.createElement('option'); o.value = c.id; o.textContent = `${c.name} — ${c.email}`;
+    clientSelect.appendChild(o);
+  });
+}
+
+async function loadReminders() {
+  const data = await api('/api/reminders');
+  state.reminders = Array.isArray(data) ? data : [];
+  renderReminders();
+}
+
+function renderReminders() {
+  remindersList.innerHTML = '';
+  if (!state.reminders.length) {
+    remindersList.innerHTML = '<div class="meta">No reminders scheduled.</div>';
+    return;
+  }
+  state.reminders.forEach(r => {
+    const client = state.clients.find(c => c.id === r.clientId) || { name: 'Unknown', email: '' };
+    const li = el('li','item');
+    const left = el('div');
+    left.innerHTML = `<div style="font-weight:700">${escapeHtml(client.name)} <span class="meta">(${escapeHtml(client.email)})</span></div>
+      <div class="meta">${escapeHtml(r.message)}</div>
+      <div class="meta">When: ${formatDT(r.datetimeISO)} • Repeat: ${r.repeat}</div>`;
+    const right = el('div'); right.style.display='flex'; right.style.flexDirection='column'; right.style.gap='8px';
+    const runBtn = el('button','btn small'); runBtn.textContent='Run Now';
+    runBtn.onclick = () => runNow(r.id);
+    right.appendChild(runBtn);
+    li.appendChild(left); li.appendChild(right);
+    remindersList.appendChild(li);
+  });
+}
+
+/* logs */
+async function loadLogs() {
+  const data = await api('/api/logs');
+  state.logs = Array.isArray(data) ? data : [];
+  renderLogs();
+}
+
+function renderLogs() {
+  logsEl.innerHTML = '';
+  state.logs.slice(0,200).forEach(l => {
+    const d = el('div'); d.className='logLine';
+    d.innerHTML = `<div style="font-size:13px;color:var(--muted)">${new Date(l.timeISO).toLocaleString()}</div>
+                   <div style="font-weight:600">${escapeHtml(l.type)} — ${escapeHtml(l.detail)}</div>`;
+    logsEl.appendChild(d);
+  });
+}
+
+/* actions */
+clientForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(clientForm);
+  const payload = { name: fd.get('name'), email: fd.get('email'), phone: fd.get('phone'), notes: fd.get('notes') };
+  const res = await fetch('/api/clients', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(payload) });
+  const data = await res.json();
+  if (res.ok) {
+    clientForm.reset();
+    await refreshAll();
+  } else {
+    alert(`Error: ${data.error || 'failed'}`);
+  }
+});
+
+reminderForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const clientId = Number(clientSelect.value);
+  const datetime = document.getElementById('datetime').value;
+  const message = document.getElementById('message').value.trim();
+  const repeat = document.getElementById('repeat').value;
+  if (!clientId || !datetime || !message) { alert('Please select client, date/time and message'); return; }
+  const payload = { clientId, datetimeISO: new Date(datetime).toISOString(), message, repeat };
+  const res = await fetch('/api/reminders', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(payload) });
+  const data = await res.json();
+  if (res.ok) {
+    reminderForm.reset();
+    await refreshAll();
+  } else {
+    alert(`Error: ${data.error || 'failed'}`);
+  }
+});
+
+async function runNow(remId) {
+  const res = await fetch('/api/reminders/run-now', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ reminderId: remId }) });
+  const data = await res.json();
+  if (res.ok) {
+    await refreshAll();
+  } else {
+    alert(`Send failed: ${data.error || 'unknown'}`);
+  }
+}
+
+runNowSelected.addEventListener('click', async () => {
+  const val = Number(clientSelect.value);
+  // find earliest reminder for selected client
+  const r = state.reminders.find(x => x.clientId === val);
+  if (!r) { alert('No reminder found for selected client'); return; }
+  runNow(r.id);
+});
+
+/* other controls */
+refreshClients.addEventListener('click', loadClients);
+clientSearch.addEventListener('input', (e) => renderClients(e.target.value));
+exportBtn.addEventListener('click', async () => {
+  const data = await api('/api/export');
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'clientpulse-export.json'; a.click();
+});
+clearLogBtn.addEventListener('click', () => {
+  // front-only clear (server logs kept); just clear UI
+  logsEl.innerHTML = ''; alert('Local log view cleared. Server logs remain for audit.');
+});
+
+/* dark toggle (simple) */
+darkToggle.addEventListener('click', () => {
+  document.documentElement.classList.toggle('light');
+  darkToggle.textContent = document.documentElement.classList.contains('light') ? '🌞' : '🌙';
+});
+
+/* helpers */
+function escapeHtml(s){ if(!s) return ''; return s.replace(/[&<>"']/g, (m)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+
+/* startup */
+async function refreshAll() {
+  await Promise.all([loadClients(), loadReminders(), loadLogs()]);
+}
+refreshAll();
+
+// refresh logs periodically
+setInterval(loadLogs, 15000);
+setInterval(loadReminders, 20000);
+setInterval(loadClients, 45000);
